@@ -3,199 +3,250 @@
 **Date:** 2026-08-10
 **Status:** approved (design), not yet implemented
 
-> See what your prompts are giving away, before they leave the machine.
+> See what your coding agent has been sending to the model provider.
 
 ---
 
 ## 1. Problem
 
-Every call an app makes to a frontier model ships a payload to somebody else's
-server. Nobody looks at those payloads. In practice they carry customer names,
-email addresses, internal identifiers, salary figures, health details, API keys
-pasted into a debugging prompt, and whole rows of production data swept in by a
-"here's the context" template.
+Coding agents read whatever they need. Over a long session that includes `.env`
+files, config with live credentials, database dumps pasted for debugging,
+customer records in a CSV, and command output containing tokens. All of it is
+sent to Anthropic or OpenAI as part of the conversation, and none of it is ever
+reviewed.
 
-Existing tooling does not cover this. Secret scanners (gitleaks, trufflehog)
-read *source code at rest* and look for credentials. DLP products watch email
-and file shares. Neither inspects the live request body going to
-`api.openai.com`. The gap is specific: **outbound LLM traffic is unexamined**.
+Nobody looks, because looking is impractical. The record exists — every session
+is written to disk — but it is hundreds of megabytes of JSONL, and no tool
+reads it for this.
 
-The audience feels it as a vague unease ("we probably shouldn't be sending
-that") with no number attached. Outbound attaches the number.
+Existing tooling does not cover this ground. Secret scanners (gitleaks,
+trufflehog) read *source code at rest*; they never open a session transcript.
+Observability platforms (Langfuse, Helicone) watch API traffic you deliberately
+routed through them, which nobody does for their own coding agent. The gap is
+specific: **the transcripts are already on disk and nothing inspects them.**
+
+Measured on the author's machine at spec time: 760 Claude Code sessions and 959
+Codex sessions, unexamined.
 
 ## 2. What it is
 
-A local proxy that sits between an app and its LLM provider. The user changes
-one environment variable. Every prompt passes through, is inspected for
-sensitive data, and appears on a local dashboard with a category, a severity,
-and a running exposure count.
+A command you run inside a project folder. It reads that project's agent session
+history, finds sensitive data that was sent to the provider, and prints a report
+saying what leaked, when, and — the part that makes it actionable — **how it got
+there**.
+
+A `/outbound` skill wraps the command so it can be run conversationally inside
+Claude Code or Codex, but the tool is a standalone binary that works without any
+agent involved.
+
+### Why this shape
+
+No proxy, no environment variables, no restarting anything, no configuration.
+The data already exists. Time from install to first real finding is one command,
+on any developer's machine, against their own history. That property is the
+product.
 
 ### Success criteria
 
-1. Point an existing app at Outbound by changing one env var; the app behaves
-   identically — same responses, streaming intact, no user-visible latency.
-2. Send a prompt containing a planted email address, card number, and API key;
-   all three appear on the dashboard within a second, categorized.
-3. Send a hundred clean prompts; the dashboard stays quiet (measured false
-   positive rate, not a vibe).
+1. Run `outbound scan` in a project folder with agent history; a report appears
+   in under 10 seconds for a typical project.
+2. Plant a fake AWS key in a file, have an agent read that file, run the scan;
+   the key is reported, attributed to that file read, with the session and
+   timestamp.
+3. Run against a project with no sensitive data; the report is empty (measured
+   false positive rate, not a vibe).
 4. The corpus eval reports precision and recall per category, and CI fails if
-   recall regresses.
-5. Nothing Outbound handles is transmitted anywhere. Verifiable by running the
-   whole thing with the network disabled except the upstream provider call.
+   recall regresses below baseline.
+5. Outbound makes no network calls whatsoever. Verifiable with the network
+   disabled.
 
 ## 3. Architecture
 
 Five units, each independently testable.
 
-### 3.1 Proxy (`src/proxy/`)
+### 3.1 Readers (`src/read/`)
 
-An HTTP server exposing OpenAI- and Anthropic-compatible routes. Responsibilities:
+One adapter per agent, behind a shared interface. Each turns a vendor-specific
+transcript into a stream of normalized `Exchange` records:
 
-- Forward the request upstream unchanged and relay the response byte-identically,
-  including SSE streaming.
-- Emit the captured request body to the inspection pipeline **off the request
-  path** (fire-and-forget), so inspection latency can never reach the caller.
-- Pass upstream errors through untouched. Outbound must never turn a working app
-  into a broken one.
+```
+Exchange {
+  sessionId, timestamp, projectPath,
+  channel: "user-prompt" | "file-read" | "command-output" | "tool-result"
+          | "assistant-output" | "attachment",
+  text,
+  provenance   // file path, command line, or tool name — how this text arrived
+}
+```
 
-**Hard constraint:** the proxy is a dumb pipe by default. All intelligence lives
-downstream of the response.
+**Claude Code adapter** reads `~/.claude/projects/<slug>/*.jsonl`, where `<slug>`
+is the project path with separators replaced by dashes (`C:\Users\pan97\foo` →
+`C--Users-pan97-foo`). Record types observed at spec time: `user`, `assistant`,
+`attachment`, `file-history-snapshot`, plus session metadata lines.
 
-Dependencies: none beyond the HTTP layer. Knows nothing about detectors.
+**Codex adapter** reads `~/.codex/sessions/**/*.jsonl`.
+
+**Hard requirement:** adapters tolerate unknown record types and malformed lines
+by skipping them and counting the skips. Transcript formats are undocumented and
+will change without notice; a format bump must degrade coverage, never crash the
+scan. The skip count is surfaced in the report so silent under-reporting is
+visible.
+
+Dependencies: filesystem only. Knows nothing about detectors.
 
 ### 3.2 Detectors (`src/detect/`)
 
-Pure functions: `(text: string) => Finding[]`. No I/O, no state. Two layers.
+Pure functions: `(text: string) => Finding[]`. No I/O, no state.
 
-**Deterministic detectors** — for data with a shape. API keys (provider-specific
-prefixes plus Shannon entropy), emails, phone numbers, credit card numbers
-(Luhn-validated, not just 16 digits), JWTs, AWS access keys, IBANs, US SSNs.
-These are high precision and carry the demo.
+**Deterministic detectors** — data with a shape: provider API keys (prefix plus
+Shannon entropy), AWS access keys, private key blocks, JWTs, connection strings
+with embedded passwords, emails, phone numbers, credit cards (Luhn-validated),
+US SSNs. High precision; these carry the demo.
 
-**Contextual detector** — a local model via Ollama, prompted to flag spans that
-regex cannot catch: person names, health information, compensation figures,
-customer identifiers, internal project codenames. Returns spans with a
-confidence. Degrades cleanly: if Ollama is absent, Outbound runs deterministic
-detectors only and says so in the UI rather than silently under-reporting.
+**Heuristic detectors** — `.env` file contents, `KEY=value` credential blocks,
+and bulk personal data (a CSV with an email column beats fifty individual email
+matches, and should be reported as one finding, not fifty).
 
 A `Finding` carries: category, severity, byte range, a **redacted** excerpt, the
 detector that fired, and a confidence.
 
-### 3.3 Store (`src/store/`)
+**Deliberately excluded from v1:** a local-model contextual detector for names
+and free-text personal data. It was in the previous draft; it is cut because it
+adds an Ollama dependency, makes the tool slow, and lands in the category with
+the worst precision. Deterministic detection of credentials is where the real
+finding is, and it runs everywhere with no setup. Revisit once the corpus shows
+where the deterministic layer misses.
+
+### 3.3 Attribution (`src/attribute/`)
+
+The unit that makes the report actionable rather than alarming.
+
+For each finding, join it back to the `Exchange` that carried it and answer:
+**how did this reach the provider?** Reading a `.env` file, output of a
+`printenv`, a value the user pasted, a tool result containing a config dump.
+
+Findings are grouped by the value's salted hash, so one credential read across
+forty sessions is one finding with a recurrence count, not forty rows. Recurrence
+is itself the signal: a key that appears in forty sessions is a systemic leak,
+a key that appears once is an accident.
+
+### 3.4 Store (`src/store/`)
 
 SQLite, one file, created on first run.
 
 **Invariant: raw sensitive values are never written to disk.** The store holds
-redacted excerpts (`sk-ab...9f`) and a salted hash of the raw value for dedup
-and recurrence counting. A leak scanner that accumulates a database of everyone's
-leaked secrets is a worse product than no scanner.
+redacted excerpts (`AKIA...7F2`) and a salted hash for dedup and recurrence
+counting. A scanner that accumulates a database of the secrets it found is a
+worse product than no scanner. The salt is generated per install and stored
+alongside, so hashes are not comparable across machines.
 
-Schema: `requests` (timestamp, provider, model, route, byte size, latency) and
-`findings` (request id, category, severity, redacted excerpt, value hash,
-detector, confidence).
+Schema: `scans`, `sessions`, `findings`, `occurrences`.
 
-### 3.4 Dashboard (`src/web/`)
+### 3.5 Reporters (`src/report/`)
 
-A local React page served by the proxy process. Shows:
+- **Terminal** — the default. Grouped by severity, each finding showing category,
+  redacted value, recurrence count, and attribution. Written to be read by a
+  human in fifteen seconds.
+- **Markdown / HTML** — `--out report.html` for a shareable artifact. This is the
+  portfolio screenshot and the consulting deliverable.
+- **JSON** — `--json` so the `/outbound` skill can read structured results and
+  summarize them conversationally.
 
-- Live feed of requests as they happen, findings attached.
-- Exposure score — a single headline number, defined in §6.
-- Breakdown by category and by provider.
-- Recurrence: which values leak repeatedly, by hash, so a systemic leak is
-  distinguishable from a one-off.
+### 3.6 The skill (`skill/`)
 
-No auth, no accounts, localhost only. This is a single-machine developer tool.
-
-### 3.5 Redaction mode (`--redact`, off by default)
-
-Replaces detected values with stable placeholders (`<EMAIL_1>`) before
-forwarding upstream. This is what converts Outbound from a report into a
-control.
-
-It ships **opt-in** because it is the one feature that can break a working app:
-if the model genuinely needs the real value, redacting it changes the answer.
-Default-off keeps the "changing one env var is safe" promise intact.
-
-When enabled it moves inspection onto the request path, and the latency budget
-in §7 applies.
+`/outbound` is a thin wrapper: it runs `outbound scan --json`, then explains the
+results in conversation and offers next steps. It contains no detection logic.
+This is a deliberate boundary — the skill is a front door, and the tool must be
+fully usable by someone who has never installed it.
 
 ## 4. Data flow
 
 ```
-app --> proxy --> upstream provider
-          |
-          +--> (async) detectors --> findings --> SQLite --> dashboard (SSE)
+~/.claude/projects/<slug>/*.jsonl ─┐
+~/.codex/sessions/**/*.jsonl ──────┴─> readers -> Exchange stream
+      -> detectors -> findings -> attribution -> SQLite -> reporters
 ```
-
-With `--redact`, detection moves inline between proxy and upstream.
 
 ## 5. Testing strategy
 
-**Detectors** are pure, so they are unit-tested directly with no proxy running.
-TDD applies: a detector's test is written before it exists.
+**Detectors** are pure, so they are unit-tested directly with no transcripts
+involved. TDD applies: a detector's test is written before it exists.
 
-**Proxy** gets contract tests against a stub upstream: streamed responses arrive
-byte-identical, chunk boundaries preserved, upstream 4xx/5xx pass through
-unchanged, upstream timeouts do not hang the client.
+**Readers** are tested against committed fixture transcripts, including
+deliberately malformed and unknown-type records, asserting the skip-and-count
+behavior rather than a crash.
+
+**Attribution** is tested on a fixture where the same secret arrives by three
+different routes, asserting three distinct attributions and one grouped finding.
 
 **Store** is tested on the invariant that matters: no raw value from a finding
-appears anywhere in the database file. This test reads the file bytes and
-searches for the plaintext. It fails loudly if the invariant breaks.
+appears anywhere in the database file. The test reads the file bytes and searches
+for the plaintext. It fails loudly if the invariant breaks.
+
+**Network isolation** is asserted in CI: the test suite fails if any outbound
+socket is opened.
 
 **The corpus eval** is the headline gate — see §6.
 
 ## 6. The corpus, and the number
 
-`corpus/` holds a few hundred synthetic prompts, each labelled with the
-sensitive spans planted in it, plus a set of clean prompts that must produce
-zero findings. All synthetic — no real personal data enters this repo.
+`corpus/` holds synthetic transcripts in both vendor formats, each labelled with
+the sensitive values planted in it, plus clean transcripts that must produce zero
+findings. All synthetic — no real transcript and no real credential enters this
+repo.
 
 The eval runs every detector over the corpus and reports **precision and recall
 per category**, plus a confusion matrix. It runs in CI as its own job. A change
 that drops recall below the committed baseline fails the build.
 
-The **exposure score** shown in the dashboard is defined here so it cannot drift
-into meaninglessness: a weighted count of findings per hundred requests,
-weighted by severity. It is a relative trend indicator, not a risk rating, and
-the UI says so.
-
-Publishing where detection is weak — names are genuinely hard — is part of the
-deliverable, not an embarrassment to hide.
+Publishing where detection is weak is part of the deliverable. Anyone can claim
+a scanner works; publishing its confusion matrix is the part that reads as
+senior.
 
 ## 7. Non-functional constraints
 
-- **Latency:** in default (async) mode, added latency is bounded by proxying
-  overhead only, target under 10ms. In `--redact` mode, detection is inline;
-  target under 150ms added, measured and reported.
-- **Locality:** no outbound network calls except the upstream provider request
-  the app already intended to make. The Ollama call is localhost.
-- **Failure mode:** every Outbound failure degrades to plain proxying. A crashed
-  detector, a missing Ollama, or a full disk must never break the user's app.
+- **Speed:** a single project scan completes in under 10 seconds; a full-history
+  scan of ~1700 sessions in under two minutes. Incremental by default — sessions
+  already scanned are skipped by content hash.
+- **Locality:** zero network calls, enforced by test.
+- **Safety:** Outbound only ever reads. It never edits, moves, or deletes a
+  transcript, and it never writes into the scanned project.
+- **Failure mode:** an unreadable or malformed session is skipped and counted,
+  never fatal.
 
 ## 8. Stack
 
-TypeScript throughout. Node 22, Fastify for the proxy, `better-sqlite3`, React
-plus Vite for the dashboard, Vitest for tests, Ollama for the contextual
-detector. Single package, no monorepo — the repo is small enough that a
-workspace would be ceremony.
+TypeScript, Node 22. `better-sqlite3` for the store, Vitest for tests, no
+runtime framework — this is a CLI that reads files. The HTML report is a single
+self-contained file with inlined CSS, no build step.
+
+Distributed as an npm package with a `bin`, runnable via `npx outbound`.
 
 ## 9. Scope
 
-**In v1:** OpenAI- and Anthropic-compatible routes, the two detector layers,
-SQLite store, dashboard, opt-in redaction, the corpus and its CI gate.
+**In v1:** Claude Code and Codex readers, deterministic and heuristic detectors,
+attribution with recurrence grouping, SQLite store, terminal + HTML + JSON
+reports, the `/outbound` skill, the corpus and its CI gate.
 
-**Explicitly not in v1:** multi-user or team dashboards, authentication, cloud
-hosting, CI/CD integration for other people's pipelines, a browser extension,
-providers beyond OpenAI/Anthropic shapes, policy configuration languages,
-alerting or webhooks, historical retention policies.
+**Explicitly not in v1:** the live proxy for arbitrary apps (§10), the
+local-model contextual detector, Cursor/Copilot/Windsurf readers, redaction or
+rewriting of transcripts, team or multi-machine aggregation, cloud hosting,
+scheduled or background scanning, policy configuration languages, alerting.
 
-## 10. Risks
+## 10. Phase 2 (documented so the architecture leaves room)
+
+A live proxy that sits between an arbitrary app and its provider, emitting the
+same `Exchange` records into the same detector and reporting pipeline. The
+reader interface in §3.1 exists partly to make this a new source rather than a
+rewrite. Not built in v1, and not promised in the README until it is.
+
+## 11. Risks
 
 | Risk | Handling |
 |---|---|
-| False positives make it annoying and it gets uninstalled | Measured, not guessed — corpus reports precision per category; low-precision detectors ship off by default |
-| Person-name detection is weak | Expected; published as a number rather than hidden. Names are the honest hard case |
-| Streaming subtly breaks and nobody notices until a real app misbehaves | Byte-identical contract tests on the proxy, with chunk-boundary assertions |
-| The store itself becomes the leak | Tested invariant: plaintext search over the raw database file |
-| Ollama absent on a reviewer's machine | Deterministic detectors run standalone; the UI states which layers are active |
-| Scope creep into a "platform" | §9 non-goals are normative |
+| Transcript formats are undocumented and will change | Adapters skip unknown records and count them; the count is reported. Fixture tests pin the formats observed at spec time |
+| False positives make the report noise and it gets ignored | Measured, not guessed — corpus reports precision per category; low-precision detectors ship off by default |
+| The store becomes the leak | Tested invariant: plaintext search over the raw database file |
+| A user runs it and finds nothing, concluding it is broken | Report always states what was scanned: session count, exchange count, skipped records. An empty result must be legibly empty |
+| Reporting on real transcripts risks displaying live secrets on screen | Everything is redacted at the reporter boundary, never at the display layer, so no code path can print a raw value |
+| Scope creep into a platform | §9 non-goals are normative; the proxy is §10 and stays there |
