@@ -1,5 +1,9 @@
 node_modules/
 dist/
+coverage/
 *.sqlite
+*.sqlite-journal
 *.db
 .env
+.DS_Store
+report.html

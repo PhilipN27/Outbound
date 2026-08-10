@@ -1,0 +1,48 @@
+{
+  "name": "outbound-scan",
+  "version": "0.0.0",
+  "description": "See what your coding agent has been sending to the model provider. Scans Claude Code and Codex session transcripts for leaked credentials and personal data.",
+  "license": "MIT",
+  "author": "Philip Nora",
+  "type": "module",
+  "bin": {
+    "outbound": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "files": ["dist", "skill"],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "security",
+    "secret-scanning",
+    "privacy",
+    "llm",
+    "dlp"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint .",
+    "typecheck": "tsc -b --noEmit false",
+    "test": "vitest run --project unit",
+    "eval": "vitest run --project corpus",
+    "check": "pnpm lint && pnpm build && pnpm test && pnpm eval"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.19.1",
+    "vitest": "^3.0.0"
+  }
+}
