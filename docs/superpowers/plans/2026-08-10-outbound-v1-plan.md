@@ -164,9 +164,30 @@ reports nothing.
 - Phase 5 can begin as soon as Phase 1 lands; the corpus is what tells you
   whether the detectors are actually any good, so earlier is better.
 
-## Cross-model review
+## Verification, in place of a second model
 
-Per the author's working doctrine, route the Phase 1 and Phase 3 diffs through
-Codex (`/break-it`) before considering them done. Detection logic and the
-no-plaintext invariant are exactly the kind of code where a second model earns
-its cost.
+No cross-model review is available for this build, and a second Claude reviewing
+the first would carry no independent signal. The substitutes are empirical, and
+they are stronger than an opinion anyway:
+
+**Hard negatives are the real reviewer.** The corpus (§5) must contain a large
+block of strings that look like secrets and are not: UUIDs, git SHAs, base64
+image data, content hashes, lorem ipsum, `sk-example` / `AKIAIOSFODNN7EXAMPLE`
+and the other placeholder credentials from vendor documentation, long random
+identifiers from real package-lock files. Every one of these must produce zero
+findings. Build this block *while* writing each detector, not after — a detector
+written against only positive cases is always too loose.
+
+**Cross-check against published rule sets.** gitleaks and trufflehog publish
+their detection patterns. Compare coverage per category and note in the corpus
+README where Outbound is narrower. Deliberately narrower is a decision;
+accidentally narrower is a bug.
+
+**Break the invariant test once, on purpose.** For the no-plaintext-on-disk test:
+write a raw value to the store, confirm the test fails, then restore. A test that
+has never failed has never been verified.
+
+**Run against reality early.** After Phase 1, run the detectors over a large body
+of ordinary text — `node_modules`, the repo's own source, a real transcript — and
+count the findings. Anything above a trickle is a precision problem to fix before
+building further on top of it.
