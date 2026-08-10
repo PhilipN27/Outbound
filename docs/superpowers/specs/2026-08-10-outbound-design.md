@@ -216,9 +216,11 @@ senior.
 
 ## 8. Stack
 
-TypeScript, Node 22. `better-sqlite3` for the store, Vitest for tests, no
-runtime framework — this is a CLI that reads files. The HTML report is a single
-self-contained file with inlined CSS, no build step.
+TypeScript, Node 22. **`node:sqlite`** for the store — built into Node 22, so the
+project has zero runtime dependencies and nothing to compile on any platform.
+(It emits an experimental warning; suppressed at the CLI entry point.) Vitest for
+tests, no runtime framework — this is a CLI that reads files. The HTML report is
+a single self-contained file with inlined CSS, no build step.
 
 Distributed as an npm package with a `bin`, runnable via `npx outbound`.
 
