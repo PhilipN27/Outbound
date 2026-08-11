@@ -21,17 +21,18 @@ Outbound — all projects
   skipped records: 0 malformed, 0 unknown
 
 CRITICAL (61)
-  connection-string      postgres://hermetic:[redacted]@127.0.0.1:5432/hermetic 10×
+  connection-string      postgres://app:[redacted]@db.internal:5432/prod 10×
       via user-prompt user
       first 2026-08-10 · last 2026-08-10 · 10 session(s)
   ...
 ```
 
-That is real output from the author's machine: 1.7 GB of transcripts across
-1,254 sessions scanned in 90 seconds, surfacing (among other things) a
-database password pasted into prompts in ten different sessions. Recurrence is
-the signal — a credential sent once is an accident; sent in ten sessions, it
-is a habit.
+The scan numbers are real — 1.7 GB of transcripts across 1,254 sessions on
+the author's machine, scanned in 90 seconds. The finding line is a synthetic
+stand-in with the same shape as what such scans surface; the real ones stay
+on the machine they were found on, which is the point of the tool. Recurrence
+is the signal — a credential sent once is an accident; sent in ten sessions,
+it is a habit.
 
 ## Install
 
