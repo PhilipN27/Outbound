@@ -74,6 +74,33 @@ describe("findings roundtrip", () => {
   });
 });
 
+describe("detector version invalidation", () => {
+  test("a detector upgrade wipes cached findings and session marks, keeps the salt", () => {
+    const path = join(dir, "version.sqlite");
+    const a = openStore(path, "v1");
+    const salt = a.salt;
+    a.upsertFindings(attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], a.salt));
+    a.markSessionScanned("C:\\t\\a.jsonl", "claude-code", "hash1");
+    a.close();
+
+    const b = openStore(path, "v2");
+    expect(b.salt).toBe(salt);
+    expect(b.loadFindings()).toEqual([]);
+    expect(b.isSessionScanned("C:\\t\\a.jsonl", "hash1")).toBe(false);
+    b.close();
+  });
+
+  test("reopening with the same version keeps everything", () => {
+    const path = join(dir, "version-same.sqlite");
+    const a = openStore(path, "v1");
+    a.upsertFindings(attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], a.salt));
+    a.close();
+    const b = openStore(path, "v1");
+    expect(b.loadFindings()).toHaveLength(1);
+    b.close();
+  });
+});
+
 describe("incremental session tracking", () => {
   test("a session is unscanned until marked, and hash changes invalidate it", () => {
     const store = openStore(join(dir, "sessions.sqlite"));

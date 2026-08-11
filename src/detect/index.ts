@@ -14,6 +14,12 @@ import { detectSsn } from "./ssn.js";
 export type { Category, Detector, Finding, Severity } from "./finding.js";
 export { makeFinding, redactValue } from "./finding.js";
 
+// Bump on any change to what the detectors match. The store wipes its cached
+// findings and session marks when this changes, so improved detectors re-run
+// over history instead of stale findings surviving forever.
+// v2: credit-card decimal-fraction fix (pose-data floats matched as cards).
+export const DETECTORS_VERSION = "2";
+
 export const allDetectors: Record<string, Detector> = {
   "provider-keys": detectProviderKeys,
   aws: detectAws,

@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import { DETECTORS_VERSION } from "./detect/index.js";
 import { htmlReport } from "./report/html.js";
 import { jsonReport } from "./report/json.js";
 import { terminalReport } from "./report/terminal.js";
@@ -58,7 +59,7 @@ export function cliMain(argv: string[], env: Env = process.env): CliResult {
 
   const projectPath = values.all ? null : (values.project ?? process.cwd());
 
-  const store = openStore(join(stateDir, "outbound.sqlite"));
+  const store = openStore(join(stateDir, "outbound.sqlite"), DETECTORS_VERSION);
   try {
     const report = runScan({ projectPath, io, store });
     if (values.out !== undefined) {

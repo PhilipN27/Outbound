@@ -67,7 +67,7 @@ export class Store {
   readonly salt: string;
   private readonly db: DatabaseSync;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, detectorsVersion = "0") {
     this.db = new SqliteDatabase(dbPath);
     this.db.exec(SCHEMA);
     const row = this.db.prepare("SELECT value FROM meta WHERE key = 'salt'").get() as
@@ -78,6 +78,21 @@ export class Store {
     } else {
       this.salt = randomBytes(32).toString("hex");
       this.db.prepare("INSERT INTO meta (key, value) VALUES ('salt', ?)").run(this.salt);
+    }
+
+    // Findings are a cache of detector output over transcripts. When the
+    // detectors change, the cache is stale — wipe and let the next scan
+    // rebuild, keeping the salt so hashes stay comparable on this install.
+    const versionRow = this.db
+      .prepare("SELECT value FROM meta WHERE key = 'detectorsVersion'")
+      .get() as { value: string } | undefined;
+    if (versionRow?.value !== detectorsVersion) {
+      this.db.exec("DELETE FROM occurrences; DELETE FROM findings; DELETE FROM sessions;");
+      this.db
+        .prepare(
+          "INSERT INTO meta (key, value) VALUES ('detectorsVersion', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        )
+        .run(detectorsVersion);
     }
   }
 
@@ -173,6 +188,6 @@ export class Store {
   }
 }
 
-export function openStore(dbPath: string): Store {
-  return new Store(dbPath);
+export function openStore(dbPath: string, detectorsVersion?: string): Store {
+  return new Store(dbPath, detectorsVersion);
 }
