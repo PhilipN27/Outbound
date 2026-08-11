@@ -30,7 +30,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --noEmit false",
     "test": "vitest run --project unit",
-    "eval": "vitest run --project corpus",
+    "eval": "node corpus/generate.mjs && vitest run --project corpus",
     "check": "pnpm lint && pnpm build && pnpm test && pnpm eval"
   },
   "devDependencies": {
