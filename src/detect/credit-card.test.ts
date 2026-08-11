@@ -39,6 +39,17 @@ describe("detectCreditCard", () => {
     expect(detectCreditCard("table: 5 5 0 0 0 0 0 0 0 0 0 0 0 0 0 4 end")).toHaveLength(0);
   });
 
+  test("rejects card-length digit runs inside decimal fractions", () => {
+    // Shape found in a real ML calibration JSON during the real-history run.
+    expect(detectCreditCard('"probability": 0.4111111111111111,')).toHaveLength(0);
+    expect(detectCreditCard("score=0.5555555555554444")).toHaveLength(0);
+  });
+
+  test("still fires after ordinary punctuation boundaries", () => {
+    expect(detectCreditCard("(4111111111111111)")).toHaveLength(1);
+    expect(detectCreditCard("card 4111111111111111.")).toHaveLength(1);
+  });
+
   test("rejects digits embedded in a longer run", () => {
     expect(detectCreditCard("id 94111111111111111119")).toHaveLength(0);
   });

@@ -1,6 +1,9 @@
 import { makeFinding, type Finding } from "./finding.js";
 
-const CANDIDATE_RE = /(?<![\d-])(?:\d[ -]?){12,18}\d(?![\d-])/g;
+// The leading lookbehind excludes '.' so digit runs inside decimal fractions
+// (0.4111111111111111 in ML model dumps) never become candidates; the
+// trailing one keeps '.' legal so sentence-final cards still match.
+const CANDIDATE_RE = /(?<![\d.-])(?:\d[ -]?){12,18}\d(?![\d-])/g;
 
 // Issuer prefix -> allowed lengths. A Luhn check alone still passes 1 in 10
 // random digit runs; requiring a known issuer range kills timestamps and ids.
