@@ -1,6 +1,6 @@
 {
   "name": "outbound-scan",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "See what your coding agent has been sending to the model provider. Scans Claude Code and Codex session transcripts for leaked credentials and personal data.",
   "license": "MIT",
   "author": "Philip Nora",
