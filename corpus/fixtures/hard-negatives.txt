@@ -1,0 +1,78 @@
+# Hard negatives: strings that look like secrets and are not.
+# Every detector must produce zero findings over this entire file.
+
+## UUIDs
+550e8400-e29b-41d4-a716-446655440000
+6ba7b810-9dad-11d1-80b4-00c04fd430c8
+f47ac10b-58cc-4372-a567-0e02b2c3d479
+session id: 672e5bb0-2a58-46f0-be48-2422f014a580
+
+## Git SHAs (full and short)
+commit 356a192b7913b04c54574d18c28d46e6395428ab
+commit da39a3ee5e6b4b0d3255bfef95601890afd80709
+Merge: b5c0ca1 74b8c7a
+git checkout 995c432ad0389fbb
+
+## Content hashes
+sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+sha256: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+md5: d41d8cd98f00b204e9800998ecf8427e
+
+## package-lock integrity strings
+"integrity": "sha512-KSOqNYr7uBqog9CYFGZi0kZJgIQd0GyGs8sVFHbvHnCnQzBg7bdLKq5hVyRYFYYEHkYblM/F/rjIGLL0R3jE2Q=="
+"integrity": "sha512-x6C3eYQ3rrDXbeX1UY9c7VpVGN8N6sBgy6a2ScUiO5UO5wIAbLKY3sSm5+Oq0JDrfzz3sfUW9jV4mkXUI8dpPg=="
+"integrity": "sha1-mrVie5PmBSkTy45BAQTUEZeRVeM="
+
+## Base64 image data (standard alphabet, + and /)
+data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==
+data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==
+
+## Vendor documentation placeholder credentials (must never fire)
+Set your key like OPENAI_API_KEY=sk-example to get started.
+The docs show sk-XXXXXXXXXXXXXXXXXXXXXXXX as the placeholder format.
+Try sk-1234567890 or sk-your-key-here in the samples.
+AWS documentation uses AKIAIOSFODNN7EXAMPLE as the sample access key.
+It pairs with aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+Another doc key: AKIAI44QH8DHBEXAMPLE
+GitHub shows ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX in its examples.
+Slack docs use xoxb-your-token-here as the placeholder.
+
+## Public key material (not private)
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE1nJoLNbFPk3zGmUv9XkQ5cRt7bYd
+-----END PUBLIC KEY-----
+-----BEGIN CERTIFICATE-----
+MIIDXTCCAkWgAwIBAgIJAJC1HiIAZAiIMA0GCSqGSIb3DQEBBQUAMEUxCzAJBgNV
+-----END CERTIFICATE-----
+
+## Connection strings without credentials
+postgres://localhost:5432/mydb
+redis://localhost:6379/0
+mongodb://db.internal:27017/analytics
+
+## Ordinary numbers that are not phone numbers, SSNs, or cards
+version 10.2.31, released 2026-08-10T12:34:56Z
+listening on 192.168.1.100:8080
+order number 4111111111111112 was rejected
+build 20260810123456
+
+## Base64url fragment (contains sk- lookalike boundaries inside)
+eyJhbGciOiJIUzI1NiJ9Qsk-antZk9TqW4mNxP2vRb7Yc1LhJ8dF3gK5sA0uEwHrM
+
+## Email lookalikes and placeholder addresses
+git clone git@github.com:PhilipN27/Outbound.git
+npm install eslint-config-prettier@9.1.0
+Sign up with user@example.com in the tutorial.
+Reach the service at admin@localhost after boot.
+Mention @teamhandle in the channel.
+
+## Phone and SSN lookalikes
+deployed 2026-08-10T12:34:56+02:00
+version 10.200.3001 on 192.168.100.200:8080
+invalid SSNs from seed data: 000-12-3456, 666-12-3456, 900-12-3456
+group and serial zeros: 123-00-4567, 123-45-0000
+
+## Lorem ipsum
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
+tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam,
+quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo.
