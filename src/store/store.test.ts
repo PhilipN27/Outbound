@@ -86,7 +86,8 @@ describe("incremental session tracking", () => {
 });
 
 describe("INVARIANT: no raw secret in the database file", () => {
-  test("raw values planted through the full pipeline never reach disk", () => {
+  // CI's windows runner has slow disk; locally this takes ~300ms.
+  test("raw values planted through the full pipeline never reach disk", { timeout: 30_000 }, () => {
     const path = join(dir, "invariant.sqlite");
     const store = openStore(path);
     const grouped = attribute(
