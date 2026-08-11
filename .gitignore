@@ -3,7 +3,9 @@ dist/
 coverage/
 *.sqlite
 *.sqlite-journal
+*.sqlite.key
 *.db
+*.db.key
 .env
 .DS_Store
 report.html

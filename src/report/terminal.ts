@@ -9,8 +9,24 @@ const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low"];
 // every detail.
 const ITEMIZED = new Set<Severity>(["critical", "high", "medium"]);
 
+// Transcript metadata is attacker-controlled. Render terminal controls and
+// bidirectional overrides visibly so they cannot alter the surrounding report.
+const TERMINAL_UNSAFE_RE =
+  // eslint-disable-next-line no-control-regex -- matching terminal controls is the security boundary
+  /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/gu;
+
+function terminalSafe(value: string): string {
+  return value.replace(TERMINAL_UNSAFE_RE, (character) => {
+    if (character === "\n") return "\\n";
+    if (character === "\r") return "\\r";
+    if (character === "\t") return "\\t";
+    const codePoint = character.codePointAt(0)!;
+    return `\\u${codePoint.toString(16).padStart(4, "0")}`;
+  });
+}
+
 function day(iso: string): string {
-  return iso.slice(0, 10);
+  return terminalSafe(iso.slice(0, 10));
 }
 
 function describeRoutes(f: GroupedFinding): string {
@@ -20,7 +36,7 @@ function describeRoutes(f: GroupedFinding): string {
     const key = `${r.channel} ${r.provenance}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    parts.push(key);
+    parts.push(`${terminalSafe(r.channel)} ${terminalSafe(r.provenance)}`);
   }
   const shown = parts.slice(0, 3).join("  ·  ");
   const more = parts.length > 3 ? `  (+${parts.length - 3} more routes)` : "";
@@ -29,7 +45,7 @@ function describeRoutes(f: GroupedFinding): string {
 
 export function terminalReport(report: ScanReportData): string {
   const lines: string[] = [];
-  const scope = report.projectPath ?? "all projects";
+  const scope = terminalSafe(report.projectPath ?? "all projects");
   lines.push(`Outbound — ${scope}`);
   lines.push(
     `  scanned ${report.sessions.total} sessions ` +
@@ -52,7 +68,9 @@ export function terminalReport(report: ScanReportData): string {
     lines.push(`${severity.toUpperCase()} (${group.length})`);
     if (ITEMIZED.has(severity)) {
       for (const f of group) {
-        lines.push(`  ${f.category.padEnd(22)} ${f.excerpt.padEnd(18)} ${f.recurrence}×`);
+        lines.push(
+          `  ${terminalSafe(f.category).padEnd(22)} ${terminalSafe(f.excerpt).padEnd(18)} ${f.recurrence}×`
+        );
         lines.push(`      via ${describeRoutes(f)}`);
         lines.push(
           `      first ${day(f.firstSeen)} · last ${day(f.lastSeen)} · ` +
@@ -64,7 +82,7 @@ export function terminalReport(report: ScanReportData): string {
       for (const f of group) byCategory.set(f.category, (byCategory.get(f.category) ?? 0) + 1);
       lines.push(
         "  " +
-          [...byCategory.entries()].map(([c, n]) => `${c} ×${n}`).join(", ") +
+          [...byCategory.entries()].map(([c, n]) => `${terminalSafe(c)} ×${n}`).join(", ") +
           "   (details with --json)"
       );
     }

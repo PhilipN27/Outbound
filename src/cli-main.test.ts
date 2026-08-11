@@ -1,4 +1,12 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +40,11 @@ describe("cliMain scan", () => {
     expect(output).toContain("AKIA...F2Q");
     expect(output).toContain("file-read");
     expect(output).not.toContain("AKIA2E74XY9QGZLK7F2Q");
+    if (process.platform !== "win32") {
+      expect(statSync(stateDir).mode & 0o777).toBe(0o700);
+      expect(statSync(join(stateDir, "outbound.sqlite")).mode & 0o777).toBe(0o600);
+      expect(statSync(join(stateDir, "outbound.sqlite.key")).mode & 0o777).toBe(0o600);
+    }
   });
 
   test("--json emits machine-readable findings", () => {
@@ -50,6 +63,9 @@ describe("cliMain scan", () => {
     const html = readFileSync(out, "utf8");
     expect(html).toContain("AKIA...F2Q");
     expect(html).not.toContain("AKIA2E74XY9QGZLK7F2Q");
+    if (process.platform !== "win32") {
+      expect(statSync(out).mode & 0o777).toBe(0o600);
+    }
   });
 
   test("an unknown command explains usage and exits nonzero", () => {

@@ -54,7 +54,9 @@ Lead with the verdict in one sentence, then detail:
    habit that keeps sending it (e.g. "`printenv` output is pasted every
    session").
 
-Offer `--out report.html` if the user wants a shareable report.
+Offer `--out report.html` if the user wants a self-contained report. Before it
+is shared, warn that it contains local paths, command provenance, timestamps,
+and other attribution metadata that should be reviewed.
 
 ## Boundaries
 

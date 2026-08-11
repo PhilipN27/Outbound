@@ -13,9 +13,10 @@ credentials and personal data that were sent to the model provider. A
 
 1. **No network calls.** Outbound never opens a socket. If a dependency wants
    one, it is the wrong dependency.
-2. **No raw secrets on disk.** The store holds redacted excerpts and salted
-   hashes only. There is a test that reads the raw SQLite file and searches for
-   plaintext; it must stay passing.
+2. **No raw secrets on disk.** The store holds redacted excerpts and
+   pseudonymous keyed fingerprints. The fingerprint key stays outside SQLite,
+   and POSIX state permissions are owner-only. Tests read the raw database file
+   for planted plaintext and the fingerprint key; they must stay passing.
 3. **Read-only.** Never edit, move, or delete a transcript. Never write into the
    project being scanned. Outbound's own state lives in its own directory.
 4. **Redaction at the boundary.** Values are redacted where they leave the
@@ -43,7 +44,7 @@ credentials and personal data that were sent to the model provider. A
 src/read/       transcript adapters (claude-code, codex) -> Exchange stream
 src/detect/     pure detectors: (text) => Finding[]
 src/attribute/  join findings back to how they reached the provider
-src/store/      SQLite; redacted excerpts + salted hashes only
+src/store/      SQLite; redacted excerpts + keyed fingerprints only
 src/report/     terminal, HTML, JSON reporters
 skill/          the /outbound skill (thin wrapper over the CLI)
 corpus/         synthetic labelled transcripts + the precision/recall eval

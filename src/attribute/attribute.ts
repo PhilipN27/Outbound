@@ -12,7 +12,7 @@ export interface Route {
 }
 
 export interface GroupedFinding {
-  /** HMAC-SHA256 of the raw value with the per-install salt. Never reversible to the value. */
+  /** Pseudonymous HMAC-SHA256 fingerprint. The per-install key is stored outside SQLite. */
   valueHash: string;
   category: Category;
   severity: Severity;
@@ -25,15 +25,15 @@ export interface GroupedFinding {
   lastSeen: string;
 }
 
-// The raw value exists only inside this function, to compute the salted
-// hash. It is never a field of anything returned.
-export function attribute(exchanges: Exchange[], salt: string): GroupedFinding[] {
+// The raw value exists only inside this function, to compute its keyed
+// fingerprint. It is never a field of anything returned.
+export function attribute(exchanges: Exchange[], fingerprintKey: string): GroupedFinding[] {
   const groups = new Map<string, GroupedFinding>();
 
   for (const exchange of exchanges) {
     for (const finding of runDetectors(exchange.text)) {
       const raw = exchange.text.slice(finding.start, finding.end);
-      const valueHash = createHmac("sha256", salt).update(raw).digest("hex");
+      const valueHash = createHmac("sha256", fingerprintKey).update(raw).digest("hex");
       const route: Route = {
         channel: exchange.channel,
         provenance: exchange.provenance,

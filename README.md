@@ -48,8 +48,12 @@ Or from a checkout: `pnpm install && pnpm build && npm install -g .`
 outbound scan                    # this project's sessions (run in the project folder)
 outbound scan --all              # full history, every project
 outbound scan --json             # machine-readable, full detail
-outbound scan --out report.html  # self-contained shareable report
+outbound scan --out report.html  # self-contained HTML report
 ```
+
+Reports contain redacted findings plus local paths, command provenance,
+timestamps, and—in JSON—session identifiers. Review a report before sharing it.
+Project-scoped reports include only routes from that project.
 
 Scans are incremental: sessions already examined are skipped by content hash,
 so routine re-runs take seconds. When Outbound's detectors improve, the cache
@@ -99,9 +103,12 @@ that checksum like credit cards) became a failing test before it became a fix.
 
 - **No network calls.** Outbound never opens a socket. Verifiable offline.
 - **No raw secrets on disk.** Its SQLite store holds redacted excerpts
-  (`AKIA...F2Q`) and per-install salted hashes only. A test reads the raw
-  database bytes and searches for planted plaintext; it has been watched to
-  fail when redaction was deliberately broken.
+  (`AKIA...F2Q`) and pseudonymous keyed fingerprints. The per-install key is
+  stored separately from SQLite; on POSIX, the state directory is owner-only
+  (`0700`) and its database, key, and generated reports are `0600`. Protect the
+  whole `~/.outbound` directory: fingerprints support equality checks, not
+  encryption or anonymity. Tests inspect SQLite bytes for planted plaintext
+  and verify the fingerprint key is not present there.
 - **Read-only.** It never edits, moves, or deletes a transcript, and never
   writes into the project being scanned. Its own state lives in `~/.outbound`.
 - **Degrade, never crash.** Unknown record types and malformed lines are

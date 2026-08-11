@@ -62,7 +62,7 @@ One adapter per agent behind a shared interface, emitting the `Exchange` shape
 from spec §3.1.
 
 - **Claude Code** — `~/.claude/projects/<slug>/*.jsonl`, slug = project path with
-  separators replaced by dashes (`C:\Users\pan97\foo` → `C--Users-pan97-foo`).
+  separators replaced by dashes (`C:\Users\dev\foo` → `C--Users-dev-foo`).
   Observed record types at spec time: `user`, `assistant`, `attachment`,
   `file-history-snapshot`, plus session metadata lines. Text lives under
   `message.content`, which is sometimes a string and sometimes an array of
@@ -87,11 +87,12 @@ Windows vs POSIX. Test both path shapes explicitly.
 
 **Attribution** joins each Finding back to the Exchange that carried it and
 records how the text arrived: a file read (with path), command output (with the
-command), a pasted user prompt, a tool result. Findings group by salted hash of
-the raw value, carrying a recurrence count and the set of distinct routes.
+command), a pasted user prompt, a tool result. Findings group by a keyed
+fingerprint of the raw value, carrying a recurrence count and the set of
+distinct routes.
 
-**Store** is SQLite: `scans`, `sessions`, `findings`, `occurrences`. Salt is
-generated per install.
+**Store** is SQLite: `scans`, `sessions`, `findings`, `occurrences`. A
+fingerprint key is generated per install and stored outside SQLite.
 
 **Oracle:** a fixture where the same secret arrives by three different routes
 produces one grouped finding with three attributions and a recurrence count of

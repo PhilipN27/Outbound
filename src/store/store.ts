@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { DatabaseSync } from "node:sqlite";
 import type { GroupedFinding, Route } from "../attribute/attribute.js";
@@ -11,6 +12,25 @@ import type { Channel } from "../read/exchange.js";
 const { DatabaseSync: SqliteDatabase } = createRequire(import.meta.url)(
   "node:sqlite"
 ) as typeof import("node:sqlite");
+
+const FINGERPRINT_KEY_RE = /^[0-9a-f]{64}$/;
+
+function restrictToOwner(path: string, mode: number): void {
+  if (process.platform !== "win32") chmodSync(path, mode);
+}
+
+function isNotFound(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+function readFingerprintKey(path: string): string {
+  const key = readFileSync(path, "utf8");
+  if (!FINGERPRINT_KEY_RE.test(key)) {
+    throw new Error(`Invalid Outbound fingerprint key at ${path}`);
+  }
+  restrictToOwner(path, 0o600);
+  return key;
+}
 
 export interface ScanSummary {
   startedAt: string;
@@ -64,25 +84,45 @@ CREATE TABLE IF NOT EXISTS occurrences (
 `;
 
 export class Store {
-  readonly salt: string;
+  readonly fingerprintKey: string;
   private readonly db: DatabaseSync;
 
   constructor(dbPath: string, detectorsVersion = "0") {
     this.db = new SqliteDatabase(dbPath);
+    restrictToOwner(dbPath, 0o600);
     this.db.exec(SCHEMA);
-    const row = this.db.prepare("SELECT value FROM meta WHERE key = 'salt'").get() as
+    const legacyRow = this.db.prepare("SELECT value FROM meta WHERE key = 'salt'").get() as
       | { value: string }
       | undefined;
-    if (row !== undefined) {
-      this.salt = row.value;
-    } else {
-      this.salt = randomBytes(32).toString("hex");
-      this.db.prepare("INSERT INTO meta (key, value) VALUES ('salt', ?)").run(this.salt);
+    const keyPath = `${dbPath}.key`;
+    let resetKeyedCaches = false;
+    try {
+      this.fingerprintKey = readFingerprintKey(keyPath);
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+      const key = legacyRow?.value ?? randomBytes(32).toString("hex");
+      if (!FINGERPRINT_KEY_RE.test(key)) {
+        throw new Error("Invalid legacy Outbound fingerprint key");
+      }
+      try {
+        writeFileSync(keyPath, key, { encoding: "utf8", flag: "wx", mode: 0o600 });
+        restrictToOwner(keyPath, 0o600);
+        this.fingerprintKey = key;
+        resetKeyedCaches = legacyRow === undefined;
+      } catch (writeError) {
+        if ((writeError as NodeJS.ErrnoException).code !== "EEXIST") throw writeError;
+        this.fingerprintKey = readFingerprintKey(keyPath);
+      }
+    }
+    this.db.exec("PRAGMA secure_delete = ON");
+    this.db.prepare("DELETE FROM meta WHERE key = 'salt'").run();
+    if (resetKeyedCaches) {
+      this.db.exec("DELETE FROM occurrences; DELETE FROM findings; DELETE FROM sessions;");
     }
 
     // Findings are a cache of detector output over transcripts. When the
     // detectors change, the cache is stale — wipe and let the next scan
-    // rebuild, keeping the salt so hashes stay comparable on this install.
+    // rebuild, keeping the fingerprint key so hashes remain comparable.
     const versionRow = this.db
       .prepare("SELECT value FROM meta WHERE key = 'detectorsVersion'")
       .get() as { value: string } | undefined;

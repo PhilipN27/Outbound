@@ -80,8 +80,8 @@ Exchange {
 ```
 
 **Claude Code adapter** reads `~/.claude/projects/<slug>/*.jsonl`, where `<slug>`
-is the project path with separators replaced by dashes (`C:\Users\pan97\foo` →
-`C--Users-pan97-foo`). Record types observed at spec time: `user`, `assistant`,
+is the project path with separators replaced by dashes (`C:\Users\dev\foo` →
+`C--Users-dev-foo`). Record types observed at spec time: `user`, `assistant`,
 `attachment`, `file-history-snapshot`, plus session metadata lines.
 
 **Codex adapter** reads `~/.codex/sessions/**/*.jsonl`.
@@ -125,7 +125,7 @@ For each finding, join it back to the `Exchange` that carried it and answer:
 **how did this reach the provider?** Reading a `.env` file, output of a
 `printenv`, a value the user pasted, a tool result containing a config dump.
 
-Findings are grouped by the value's salted hash, so one credential read across
+Findings are grouped by a keyed fingerprint of the value, so one credential read across
 forty sessions is one finding with a recurrence count, not forty rows. Recurrence
 is itself the signal: a key that appears in forty sessions is a systemic leak,
 a key that appears once is an accident.
@@ -135,10 +135,12 @@ a key that appears once is an accident.
 SQLite, one file, created on first run.
 
 **Invariant: raw sensitive values are never written to disk.** The store holds
-redacted excerpts (`AKIA...7F2`) and a salted hash for dedup and recurrence
-counting. A scanner that accumulates a database of the secrets it found is a
-worse product than no scanner. The salt is generated per install and stored
-alongside, so hashes are not comparable across machines.
+redacted excerpts (`AKIA...7F2`) and a pseudonymous HMAC fingerprint for dedup
+and recurrence counting. A scanner that accumulates a database of the secrets
+it found is a worse product than no scanner. The fingerprint key is generated
+per install, stored outside SQLite, and protected with owner-only POSIX
+permissions. Protect the whole state directory: fingerprints are not encryption
+or anonymity, and they are intentionally not comparable across installations.
 
 Schema: `scans`, `sessions`, `findings`, `occurrences`.
 
@@ -147,8 +149,8 @@ Schema: `scans`, `sessions`, `findings`, `occurrences`.
 - **Terminal** — the default. Grouped by severity, each finding showing category,
   redacted value, recurrence count, and attribution. Written to be read by a
   human in fifteen seconds.
-- **Markdown / HTML** — `--out report.html` for a shareable artifact. This is the
-  portfolio screenshot and the consulting deliverable.
+- **Markdown / HTML** — `--out report.html` for a self-contained artifact. It
+  includes local attribution metadata and must be reviewed before sharing.
 - **JSON** — `--json` so the `/outbound` skill can read structured results and
   summarize them conversationally.
 

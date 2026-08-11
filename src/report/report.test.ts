@@ -91,6 +91,34 @@ describe("terminalReport", () => {
     expect(out).toContain("email");
     expect(out).not.toContain("jane....uk");
   });
+
+  test("renders transcript-controlled terminal characters as inert text", () => {
+    const hostile: ScanReportData = {
+      ...withFindings,
+      projectPath: "C:\\proj\\demo\u001b]0;forged title\u0007",
+      findings: [
+        {
+          ...withFindings.findings[0]!,
+          excerpt: "AKIA...F2Q\u202e",
+          routes: [
+            {
+              ...withFindings.findings[0]!.routes[0]!,
+              provenance: "\u001b]8;;https://attacker.invalid\u0007CLICK\u001b]8;;\u0007\nFORGED"
+            }
+          ]
+        }
+      ]
+    };
+
+    const out = terminalReport(hostile);
+    expect(out).not.toMatch(
+      // eslint-disable-next-line no-control-regex -- the oracle rejects raw terminal controls
+      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u
+    );
+    expect(out).not.toContain("\nFORGED");
+    expect(out).toContain("\\u001b");
+    expect(out).toContain("\\nFORGED");
+  });
 });
 
 describe("jsonReport", () => {
@@ -111,6 +139,7 @@ describe("htmlReport", () => {
     expect(out).toContain("AKIA...F2Q");
     expect(out).not.toContain("<script>alert(1)</script>"); // escaped, not executed
     expect(out).toContain("&lt;script&gt;");
+    expect(out).toContain('http-equiv="Content-Security-Policy"');
   });
 
   test("an empty report still shows the scan summary", () => {

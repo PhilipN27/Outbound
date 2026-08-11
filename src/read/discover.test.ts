@@ -6,7 +6,7 @@ import { findClaudeCodeSessions, findCodexSessions, projectSlug } from "./discov
 
 describe("projectSlug", () => {
   test("Windows path shape", () => {
-    expect(projectSlug("C:\\Users\\pan97\\Outbound")).toBe("C--Users-pan97-Outbound");
+    expect(projectSlug("C:\\Users\\dev\\Outbound")).toBe("C--Users-dev-Outbound");
   });
 
   test("POSIX path shape", () => {

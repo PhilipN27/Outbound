@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, test } from "vitest";
+import type { GroupedFinding } from "./attribute/attribute.js";
 import { openStore } from "./store/store.js";
 import { runScan } from "./scan.js";
 
@@ -58,6 +59,51 @@ describe("runScan", () => {
     const report = runScan({ projectPath: "C:\\proj\\other", io, store });
     expect(report.sessions.total).toBe(0);
     expect(report.findings).toEqual([]);
+  });
+
+  test("a project report excludes routes from other projects for a shared finding", () => {
+    const scopedStore = openStore(join(dir, "project-scope.sqlite"));
+    const shared: GroupedFinding = {
+      valueHash: "ab".repeat(32),
+      category: "email",
+      severity: "low",
+      detector: "email",
+      confidence: 0.8,
+      excerpt: "user...com",
+      recurrence: 2,
+      firstSeen: "2026-08-01T10:00:00.000Z",
+      lastSeen: "2026-08-02T10:00:00.000Z",
+      routes: [
+        {
+          channel: "user-prompt",
+          provenance: "user",
+          sessionId: "target-session",
+          timestamp: "2026-08-01T10:00:00.000Z",
+          projectPath: "C:\\proj\\target"
+        },
+        {
+          channel: "file-read",
+          provenance: "C:\\client-secret\\.env",
+          sessionId: "other-session",
+          timestamp: "2026-08-02T10:00:00.000Z",
+          projectPath: "C:\\client-secret"
+        }
+      ]
+    };
+    scopedStore.upsertFindings([shared]);
+
+    const report = runScan({
+      projectPath: "C:\\proj\\target",
+      io: { claudeProjectsDir: join(dir, "missing-claude"), codexSessionsDir: join(dir, "missing-codex") },
+      store: scopedStore
+    });
+    scopedStore.close();
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]!.routes).toEqual([shared.routes[0]]);
+    expect(report.findings[0]!.recurrence).toBe(1);
+    expect(report.findings[0]!.firstSeen).toBe(shared.routes[0]!.timestamp);
+    expect(report.findings[0]!.lastSeen).toBe(shared.routes[0]!.timestamp);
   });
 
   test("skip counts from edge-case sessions surface in the report", () => {

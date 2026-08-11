@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -55,7 +55,11 @@ export function cliMain(argv: string[], env: Env = process.env): CliResult {
     codexSessionsDir: env.OUTBOUND_CODEX_SESSIONS ?? join(home, ".codex", "sessions")
   };
   const stateDir = env.OUTBOUND_STATE_DIR ?? join(home, ".outbound");
-  mkdirSync(stateDir, { recursive: true });
+  const stateDirExisted = existsSync(stateDir);
+  mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32" && (!stateDirExisted || env.OUTBOUND_STATE_DIR === undefined)) {
+    chmodSync(stateDir, 0o700);
+  }
 
   const projectPath = values.all ? null : (values.project ?? process.cwd());
 
@@ -63,7 +67,8 @@ export function cliMain(argv: string[], env: Env = process.env): CliResult {
   try {
     const report = runScan({ projectPath, io, store });
     if (values.out !== undefined) {
-      writeFileSync(values.out, htmlReport(report), "utf8");
+      writeFileSync(values.out, htmlReport(report), { encoding: "utf8", mode: 0o600 });
+      if (process.platform !== "win32") chmodSync(values.out, 0o600);
     }
     const output = values.json ? jsonReport(report) : terminalReport(report);
     return { exitCode: 0, output };

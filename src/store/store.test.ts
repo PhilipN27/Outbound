@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterAll, describe, expect, test } from "vitest";
 import { attribute } from "../attribute/attribute.js";
 import type { Exchange } from "../read/exchange.js";
@@ -25,30 +26,80 @@ function ex(text: string, channel: Exchange["channel"] = "file-read"): Exchange 
 }
 
 describe("openStore", () => {
-  test("generates a salt on first open and keeps it across reopen", () => {
+  test("generates a fingerprint key on first open and keeps it across reopen", () => {
     const path = join(dir, "salt-test.sqlite");
     const a = openStore(path);
-    const salt = a.salt;
-    expect(salt).toMatch(/^[0-9a-f]{64}$/);
+    const fingerprintKey = a.fingerprintKey;
+    expect(fingerprintKey).toMatch(/^[0-9a-f]{64}$/);
     a.close();
     const b = openStore(path);
-    expect(b.salt).toBe(salt);
+    expect(b.fingerprintKey).toBe(fingerprintKey);
     b.close();
   });
 
-  test("two installs get different salts", () => {
+  test("two installs get different fingerprint keys", () => {
     const a = openStore(join(dir, "install-a.sqlite"));
     const b = openStore(join(dir, "install-b.sqlite"));
-    expect(a.salt).not.toBe(b.salt);
+    expect(a.fingerprintKey).not.toBe(b.fingerprintKey);
     a.close();
     b.close();
+  });
+
+  test("keeps the fingerprint key outside the SQLite database", () => {
+    const path = join(dir, "separated-key.sqlite");
+    const store = openStore(path);
+    const key = store.fingerprintKey;
+    store.close();
+
+    expect(readFileSync(`${path}.key`, "utf8")).toBe(key);
+    expect(readFileSync(path).includes(Buffer.from(key, "utf8"))).toBe(false);
+    if (process.platform !== "win32") {
+      expect(statSync(`${path}.key`).mode & 0o777).toBe(0o600);
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+    }
+  });
+
+  test("migrates a legacy in-database key without leaving it in SQLite pages", () => {
+    const path = join(dir, "legacy-key.sqlite");
+    const legacyKey = "ab".repeat(32);
+    const legacy = new DatabaseSync(path);
+    legacy.exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    legacy.prepare("INSERT INTO meta (key, value) VALUES ('salt', ?)").run(legacyKey);
+    legacy.close();
+
+    const store = openStore(path);
+    expect(store.fingerprintKey).toBe(legacyKey);
+    store.close();
+
+    expect(readFileSync(`${path}.key`, "utf8")).toBe(legacyKey);
+    expect(readFileSync(path).includes(Buffer.from(legacyKey, "utf8"))).toBe(false);
+  });
+
+  test("invalidates keyed caches if the external fingerprint key is lost", () => {
+    const path = join(dir, "lost-key.sqlite");
+    const first = openStore(path, "v1");
+    const oldKey = first.fingerprintKey;
+    first.upsertFindings(attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], oldKey));
+    first.markSessionScanned("C:\\t\\lost-key.jsonl", "claude-code", "hash1");
+    first.close();
+    unlinkSync(`${path}.key`);
+
+    const recovered = openStore(path, "v1");
+    const newKey = recovered.fingerprintKey;
+    const findings = recovered.loadFindings();
+    const sessionStillCached = recovered.isSessionScanned("C:\\t\\lost-key.jsonl", "hash1");
+    recovered.close();
+
+    expect(newKey).not.toBe(oldKey);
+    expect(findings).toEqual([]);
+    expect(sessionStillCached).toBe(false);
   });
 });
 
 describe("findings roundtrip", () => {
   test("upsert then load preserves the grouped finding", () => {
     const store = openStore(join(dir, "roundtrip.sqlite"));
-    const grouped = attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], store.salt);
+    const grouped = attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], store.fingerprintKey);
     store.upsertFindings(grouped);
     const loaded = store.loadFindings();
     expect(loaded).toHaveLength(1);
@@ -58,10 +109,10 @@ describe("findings roundtrip", () => {
 
   test("upserting the same value again merges recurrence and routes", () => {
     const store = openStore(join(dir, "merge.sqlite"));
-    const first = attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], store.salt);
+    const first = attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], store.fingerprintKey);
     const second = attribute(
       [{ ...ex(`printed: ${KEY}`, "command-output"), timestamp: "2026-08-02T10:00:00.000Z" }],
-      store.salt
+      store.fingerprintKey
     );
     store.upsertFindings(first);
     store.upsertFindings(second);
@@ -75,16 +126,16 @@ describe("findings roundtrip", () => {
 });
 
 describe("detector version invalidation", () => {
-  test("a detector upgrade wipes cached findings and session marks, keeps the salt", () => {
+  test("a detector upgrade wipes cached findings and session marks, keeps the fingerprint key", () => {
     const path = join(dir, "version.sqlite");
     const a = openStore(path, "v1");
-    const salt = a.salt;
-    a.upsertFindings(attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], a.salt));
+    const fingerprintKey = a.fingerprintKey;
+    a.upsertFindings(attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], a.fingerprintKey));
     a.markSessionScanned("C:\\t\\a.jsonl", "claude-code", "hash1");
     a.close();
 
     const b = openStore(path, "v2");
-    expect(b.salt).toBe(salt);
+    expect(b.fingerprintKey).toBe(fingerprintKey);
     expect(b.loadFindings()).toEqual([]);
     expect(b.isSessionScanned("C:\\t\\a.jsonl", "hash1")).toBe(false);
     b.close();
@@ -93,7 +144,7 @@ describe("detector version invalidation", () => {
   test("reopening with the same version keeps everything", () => {
     const path = join(dir, "version-same.sqlite");
     const a = openStore(path, "v1");
-    a.upsertFindings(attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], a.salt));
+    a.upsertFindings(attribute([ex(`AWS_ACCESS_KEY_ID=${KEY}`)], a.fingerprintKey));
     a.close();
     const b = openStore(path, "v1");
     expect(b.loadFindings()).toHaveLength(1);
@@ -123,7 +174,7 @@ describe("INVARIANT: no raw secret in the database file", () => {
         ex(`ANTHROPIC_API_KEY=${PROVIDER_KEY}`),
         ex(`DATABASE_URL=postgres://app:${DB_PASSWORD}@db.internal:5432/prod`)
       ],
-      store.salt
+      store.fingerprintKey
     );
     expect(grouped.length).toBeGreaterThanOrEqual(3);
     store.upsertFindings(grouped);

@@ -34,6 +34,26 @@ interface SessionSource {
   parse: (content: string) => ParseResult;
 }
 
+function scopeFinding(finding: GroupedFinding, projectPath: string): GroupedFinding | null {
+  const routes = finding.routes.filter((route) => route.projectPath === projectPath);
+  if (routes.length === 0) return null;
+
+  let firstSeen = routes[0]!.timestamp;
+  let lastSeen = routes[0]!.timestamp;
+  for (const route of routes.slice(1)) {
+    if (route.timestamp < firstSeen) firstSeen = route.timestamp;
+    if (route.timestamp > lastSeen) lastSeen = route.timestamp;
+  }
+
+  return {
+    ...finding,
+    routes,
+    recurrence: routes.length,
+    firstSeen,
+    lastSeen
+  };
+}
+
 export function runScan(opts: ScanOptions): ScanReportData {
   const { projectPath, io, store } = opts;
   const scannedAt = new Date().toISOString();
@@ -68,7 +88,7 @@ export function runScan(opts: ScanOptions): ScanReportData {
     exchanges += result.exchanges.length;
     skipped.malformedLines += result.skipped.malformedLines;
     skipped.unknownRecords += result.skipped.unknownRecords;
-    store.upsertFindings(attribute(result.exchanges, store.salt));
+    store.upsertFindings(attribute(result.exchanges, store.fingerprintKey));
     store.markSessionScanned(source.path, source.agent, contentHash);
     scanned++;
   }
@@ -86,7 +106,10 @@ export function runScan(opts: ScanOptions): ScanReportData {
   const findings =
     projectPath === null
       ? all
-      : all.filter((f) => f.routes.some((r) => r.projectPath === projectPath));
+      : all.flatMap((finding) => {
+          const scoped = scopeFinding(finding, projectPath);
+          return scoped === null ? [] : [scoped];
+        });
 
   return {
     scannedAt,
