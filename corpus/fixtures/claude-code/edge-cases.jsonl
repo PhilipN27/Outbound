@@ -1,0 +1,5 @@
+{"type":"user","message":{"role":"user","content":"first prompt"},"uuid":"u1","timestamp":"2026-08-01T11:00:00.000Z","cwd":"C:\\proj\\demo","sessionId":"s2"}
+{"type":"hologram-sync","payload":{"future":"format"},"sessionId":"s2"}
+this line is not json at all {{{
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t9","content":[{"type":"image","source":"..."}]}]},"toolUseResult":{"stdout":"","stderr":"","interrupted":false,"isImage":true},"uuid":"u2","timestamp":"2026-08-01T11:00:02.000Z","cwd":"C:\\proj\\demo","sessionId":"s2"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"pondering the request"},{"type":"text","text":"second answer"}]},"uuid":"a1","timestamp":"2026-08-01T11:00:03.000Z","cwd":"C:\\proj\\demo","sessionId":"s2"}
