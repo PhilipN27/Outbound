@@ -43,10 +43,12 @@ describe("attribute", () => {
     const g = grouped[0]!;
     expect(g.category).toBe("aws-access-key-id");
     expect(g.recurrence).toBe(3);
-    expect(g.routes.map((r) => ({ channel: r.channel, provenance: r.provenance }))).toEqual([
-      { channel: "user-prompt", provenance: "user" },
-      { channel: "file-read", provenance: "C:\\proj\\demo\\.env" },
-      { channel: "command-output", provenance: "printenv" }
+    expect(
+      g.routes.map((r) => ({ channel: r.channel, provenance: r.provenance, projectPath: r.projectPath }))
+    ).toEqual([
+      { channel: "user-prompt", provenance: "user", projectPath: "C:\\proj\\demo" },
+      { channel: "file-read", provenance: "C:\\proj\\demo\\.env", projectPath: "C:\\proj\\demo" },
+      { channel: "command-output", provenance: "printenv", projectPath: "C:\\proj\\demo" }
     ]);
     expect(g.firstSeen).toBe("2026-08-01T10:00:00.000Z");
     expect(g.lastSeen).toBe("2026-08-02T09:00:00.000Z");

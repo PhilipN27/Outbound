@@ -110,9 +110,18 @@ export function parseCodex(content: string): ParseResult {
           provenance: p.author ?? "agent",
           text: messageText(p.content)
         });
-      } else if (p.type !== "reasoning") {
-        // reasoning payloads are encrypted model-side artifacts; anything else
-        // under response_item is a shape this adapter has never seen.
+      } else if (p.type !== undefined && p.type.endsWith("_output")) {
+        // new tool families keep appearing (tool_search_output, ...); any
+        // *_output carries text that went to the provider.
+        exchanges.push({
+          ...base,
+          channel: "tool-result",
+          provenance: p.type.replace(/_(call_)?output$/, ""),
+          text: typeof p.output === "string" ? p.output : JSON.stringify(p.output ?? "")
+        });
+      } else if (p.type !== "reasoning" && !(p.type !== undefined && p.type.endsWith("_call"))) {
+        // *_call payloads and reasoning are model-side artifacts; anything
+        // else under response_item is a shape this adapter has never seen.
         skipped.unknownRecords++;
       }
     } else if (rec.type === undefined || !KNOWN_NON_PROMPT_TYPES.has(rec.type)) {

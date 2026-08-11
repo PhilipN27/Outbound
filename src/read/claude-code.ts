@@ -12,7 +12,17 @@ const KNOWN_NON_PROMPT_TYPES = new Set([
   "last-prompt",
   "ai-title",
   "summary",
-  "compact-boundary"
+  "compact-boundary",
+  // observed in the 2026-08 full-history run: session bookkeeping, no prompt text
+  "permission-mode",
+  "bridge-session",
+  "started",
+  "result",
+  "custom-title",
+  "agent-name",
+  "pr-link",
+  "agent-color",
+  "worktree-state"
 ]);
 
 interface ClaudeRecord {

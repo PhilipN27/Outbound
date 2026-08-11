@@ -1,8 +1,16 @@
 import { randomBytes } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
+import { createRequire } from "node:module";
+import type { DatabaseSync } from "node:sqlite";
 import type { GroupedFinding, Route } from "../attribute/attribute.js";
 import type { Category, Severity } from "../detect/index.js";
 import type { Channel } from "../read/exchange.js";
+
+// Loaded at evaluation time, not ESM link time: a static value import of
+// node:sqlite fires its ExperimentalWarning before any user module (including
+// the CLI's suppressor) gets to run.
+const { DatabaseSync: SqliteDatabase } = createRequire(import.meta.url)(
+  "node:sqlite"
+) as typeof import("node:sqlite");
 
 export interface ScanSummary {
   startedAt: string;
@@ -50,7 +58,8 @@ CREATE TABLE IF NOT EXISTS occurrences (
   channel TEXT NOT NULL,
   provenance TEXT NOT NULL,
   sessionId TEXT NOT NULL,
-  timestamp TEXT NOT NULL
+  timestamp TEXT NOT NULL,
+  projectPath TEXT NOT NULL
 );
 `;
 
@@ -59,7 +68,7 @@ export class Store {
   private readonly db: DatabaseSync;
 
   constructor(dbPath: string) {
-    this.db = new DatabaseSync(dbPath);
+    this.db = new SqliteDatabase(dbPath);
     this.db.exec(SCHEMA);
     const row = this.db.prepare("SELECT value FROM meta WHERE key = 'salt'").get() as
       | { value: string }
@@ -82,7 +91,7 @@ export class Store {
         lastSeen = MAX(lastSeen, excluded.lastSeen)
     `);
     const addRoute = this.db.prepare(
-      "INSERT INTO occurrences (valueHash, channel, provenance, sessionId, timestamp) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO occurrences (valueHash, channel, provenance, sessionId, timestamp, projectPath) VALUES (?, ?, ?, ?, ?, ?)"
     );
     for (const g of grouped) {
       upsert.run(
@@ -97,7 +106,7 @@ export class Store {
         g.lastSeen
       );
       for (const r of g.routes) {
-        addRoute.run(g.valueHash, r.channel, r.provenance, r.sessionId, r.timestamp);
+        addRoute.run(g.valueHash, r.channel, r.provenance, r.sessionId, r.timestamp, r.projectPath);
       }
     }
   }
@@ -117,7 +126,7 @@ export class Store {
       lastSeen: string;
     }>;
     const routeStmt = this.db.prepare(
-      "SELECT channel, provenance, sessionId, timestamp FROM occurrences WHERE valueHash = ? ORDER BY timestamp, id"
+      "SELECT channel, provenance, sessionId, timestamp, projectPath FROM occurrences WHERE valueHash = ? ORDER BY timestamp, id"
     );
     return findings.map((f) => ({
       ...f,

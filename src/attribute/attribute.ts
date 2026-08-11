@@ -8,6 +8,7 @@ export interface Route {
   provenance: string;
   sessionId: string;
   timestamp: string;
+  projectPath: string;
 }
 
 export interface GroupedFinding {
@@ -37,7 +38,8 @@ export function attribute(exchanges: Exchange[], salt: string): GroupedFinding[]
         channel: exchange.channel,
         provenance: exchange.provenance,
         sessionId: exchange.sessionId,
-        timestamp: exchange.timestamp
+        timestamp: exchange.timestamp,
+        projectPath: exchange.projectPath
       };
       const existing = groups.get(valueHash);
       if (existing === undefined) {

@@ -44,12 +44,15 @@ describe("parseCodex on edge cases", () => {
     expect(skipped).toEqual({ malformedLines: 1, unknownRecords: 2 });
   });
 
-  test("an orphan tool output and a developer message still come through", () => {
+  test("orphan/novel tool outputs and a developer message still come through", () => {
     expect(
       exchanges.map((e) => ({ channel: e.channel, provenance: e.provenance }))
     ).toEqual([
       { channel: "tool-result", provenance: "tool" },
-      { channel: "user-prompt", provenance: "developer" }
+      { channel: "user-prompt", provenance: "developer" },
+      { channel: "tool-result", provenance: "tool_search" }
     ]);
+    // a *_call payload is model-side and is neither emitted nor unknown
+    expect(exchanges.some((e) => e.text.includes("matched three tools"))).toBe(true);
   });
 });

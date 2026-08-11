@@ -1,7 +1,9 @@
 {"timestamp":"2026-08-03T09:00:00.000Z","type":"session_meta","payload":{"id":"c2","timestamp":"2026-08-03T09:00:00.000Z","cwd":"C:\\proj\\demo"}}
-{"timestamp":"2026-08-03T09:00:01.000Z","type":"response_item","payload":{"type":"quantum_call","id":"q1","waveform":"collapsed"}}
+{"timestamp":"2026-08-03T09:00:01.000Z","type":"response_item","payload":{"type":"quantum_wave","id":"q1","waveform":"collapsed"}}
 not json either <<<
 {"timestamp":"2026-08-03T09:00:02.000Z","type":"brand-new-record","payload":{"whatever":true}}
 {"timestamp":"2026-08-03T09:00:03.000Z","type":"event_msg","payload":{"type":"user_message","message":"duplicate of the response_item"}}
 {"timestamp":"2026-08-03T09:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","id":"f9","call_id":"orphan","output":"no matching call"}}
 {"timestamp":"2026-08-03T09:00:05.000Z","type":"response_item","payload":{"type":"message","id":"m9","role":"developer","content":[{"type":"input_text","text":"house rules"}]}}
+{"timestamp":"2026-08-03T09:00:06.000Z","type":"response_item","payload":{"type":"web_search_call","id":"w1","status":"completed"}}
+{"timestamp":"2026-08-03T09:00:07.000Z","type":"response_item","payload":{"type":"tool_search_output","id":"ts1","call_id":"ts-call","output":"matched three tools"}}
